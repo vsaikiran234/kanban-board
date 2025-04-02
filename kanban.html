@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanban Board</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: #f9f9f9;
+        }
+
+        h1 {
+            text-align: center;
+            width: 100%;
+            margin-top: 20px;
+            font-size: 24px;
+        }
+
+        .container {
+            display: flex;
+            width: 100%; /* Take up the full width */
+            height: 100%;
+            max-width: 100%;
+            margin-top: 20px;
+            padding: 20px;
+            box-sizing: border-box; /* Include padding in width/height */
+        }
+
+        .board-container {
+            flex: 2; /* Take up 2/3 of the space */
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-gap: 20px;
+            padding-right: 20px; /* Add some spacing between board and form */
+            box-sizing: border-box;
+        }
+
+        .form-container {
+            flex: 1; /* Take up 1/3 of the space */
+            width: 100%;
+            max-width: 400px; /* Limit the width of the form */
+            box-sizing: border-box;
+        }
+
+        .column {
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            padding: 10px;
+            background-color: #fff;
+            min-height: 200px; /* Ensure columns have some height */
+            overflow-y: auto; /* Enable vertical scrolling */
+        }
+
+        .column-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .task {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #e8f4e8;
+            cursor: grab; /* Change cursor to grab */
+        }
+
+        .task p {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .task-buttons {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .task-buttons button {
+            padding: 5px 10px;
+            font-size: 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .edit-btn {
+            background-color: #007bff;
+            color: #fff;
+        }
+
+        .edit-btn:hover {
+            background-color: #0056b3;
+        }
+
+        .delete-btn {
+            background-color: #dc3545;
+            color: #fff;
+        }
+
+        .delete-btn:hover {
+            background-color: #c82333;
+        }
+
+        .add-task-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background-color: #fff;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        select, input, button {
+            padding: 10px;
+            font-size: 16px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #28a745;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        /* Style for dragging */
+        .dragging {
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <h1>Kanban Board</h1>
+    <div class="container">
+        <!-- 2x2 Matrix Board -->
+        <div class="board-container">
+            <div class="column" id="Do">
+                <h2 class="column-title">Do</h2>
+            </div>
+            <div class="column" id="Decide">
+                <h2 class="column-title">Decide</h2>
+            </div>
+            <div class="column" id="Delegate">
+                <h2 class="column-title">Delegate</h2>
+            </div>
+            <div class="column" id="Delete">
+                <h2 class="column-title">Delete</h2>
+            </div>
+        </div>
+
+        <!-- Task Input Form -->
+        <div class="form-container">
+            <div class="add-task-container">
+                <input type="text" id="newTask" placeholder="Add a new task..." required />
+                <input type="date" id="deadline" placeholder="Deadline (Optional)" />
+                <select id="projectCategory">
+                    <option value="Do">Do</option>
+                    <option value="Decide">Decide</option>
+                    <option value="Delegate">Delegate</option>
+                    <option value="Delete">Delete</option>
+                </select>
+                <select id="projectType">
+                    <option value="R1">R1</option>
+                    <option value="R2">R2</option>
+                    <option value="R3">R3</option>
+                </select>
+                <button onclick="addTask()">Add Task</button>
+                <button onclick="addProjectType()">Add Custom Project Type</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const columns = ["Do", "Decide", "Delegate", "Delete"];
+        const tasks = JSON.parse(localStorage.getItem("tasks")) || {
+            Do: [],
+            Decide: [],
+            Delegate: [],
+            Delete: [],
+        };
+
+        let projectTypes = JSON.parse(localStorage.getItem("projectTypes")) || ["R1", "R2", "R3"];
+
+        let draggedTask = null;
+        let draggedTaskColumn = null;
+        let draggedTaskIndex = null;
+
+        // Helper function to format date
+        function formatDate(dateString) {
+            if (!dateString) return "";
+            const options = { day: "2-digit", month: "short", year: "numeric" };
+            return new Date(dateString).toLocaleDateString("en-GB", options);
+        }
+
+        // Render tasks in columns
+        function renderTasks() {
+            columns.forEach((column) => {
+                const columnElement = document.getElementById(column);
+                columnElement.innerHTML = `<h2 class="column-title">${column}</h2>`;
+                tasks[column].forEach((task, index) => {
+                    const taskElement = document.createElement("div");
+                    taskElement.className = "task";
+                    taskElement.draggable = true; // Make task draggable
+                    taskElement.dataset.column = column; // Store column info
+                    taskElement.dataset.index = index;   // Store index info
+
+                    taskElement.innerHTML = `
+                        <p>Task: <span id="taskText">${task.text}</span></p>
+                        ${task.deadline ? `<p>Deadline: <span id="taskDeadline">${formatDate(task.deadline)}</span></p>` : ""}
+                        <p>Project: <span id="taskProject">${task.projectType}</span></p>
+                        <div class="task-buttons">
+                            <button class="edit-btn" onclick="editTask('${column}', ${index})">Edit</button>
+                            <button class="delete-btn" onclick="deleteTask('${column}', ${index})">Delete</button>
+                        </div>
+                    `;
+
+                    // Add drag event listeners
+                    taskElement.addEventListener('dragstart', dragStart);
+                    taskElement.addEventListener('dragend', dragEnd);
+
+                    columnElement.appendChild(taskElement);
+                });
+
+                // Add dragover and drop event listeners to columns
+                columnElement.addEventListener('dragover', dragOver);
+                columnElement.addEventListener('drop', drop);
+            });
+        }
+
+        // Drag Functions
+        function dragStart(event) {
+            draggedTask = event.target;
+            draggedTask.classList.add('dragging');
+            draggedTaskColumn = event.target.dataset.column;
+            draggedTaskIndex = parseInt(event.target.dataset.index);
+
+        }
+
+        function dragEnd() {
+            draggedTask.classList.remove('dragging');
+            draggedTask = null;
+            draggedTaskColumn = null;
+            draggedTaskIndex = null;
+        }
+
+        function dragOver(event) {
+            event.preventDefault();
+        }
+
+        function drop(event) {
+            event.preventDefault();
+            const targetColumn = event.target.closest('.column').id;
+
+            if (draggedTaskColumn !== targetColumn) {
+                // Move task
+                const taskToMove = tasks[draggedTaskColumn].splice(draggedTaskIndex, 1)[0];
+                tasks[targetColumn].push(taskToMove);
+                localStorage.setItem("tasks", JSON.stringify(tasks));
+                renderTasks();
+            }
+        }
+
+        // Render project type options
+        function renderProjectTypeOptions() {
+            const projectTypeSelect = document.getElementById("projectType");
+            projectTypeSelect.innerHTML = ""; // Clear existing options
+
+            projectTypes.forEach(type => {
+                const option = document.createElement("option");
+                option.value = type;
+                option.textContent = type;
+                projectTypeSelect.appendChild(option);
+            });
+        }
+
+        // Add new project type
+        function addProjectType() {
+            const newProjectType = prompt("Enter new project type:");
+            if (newProjectType && !projectTypes.includes(newProjectType)) {
+                projectTypes.push(newProjectType);
+                localStorage.setItem("projectTypes", JSON.stringify(projectTypes));
+                renderProjectTypeOptions(); // Re-render options
+            }
+        }
+
+
+        // Add new task
+        function addTask() {
+            const newTaskInput = document.getElementById("newTask");
+            const deadlineInput = document.getElementById("deadline");
+            const projectCategoryInput = document.getElementById("projectCategory");
+            const projectTypeInput = document.getElementById("projectType");
+
+            const taskText = newTaskInput.value.trim();
+            const taskDeadline = deadlineInput.value;
+            const projectCategory = projectCategoryInput.value;
+            const projectType = projectTypeInput.value;
+
+            if (taskText) {
+                tasks[projectCategory].push({ text: taskText, deadline: taskDeadline, projectType: projectType });
+                localStorage.setItem("tasks", JSON.stringify(tasks));
+                newTaskInput.value = "";
+                deadlineInput.value = "";
+                projectCategoryInput.value = "Do";
+                projectTypeInput.value = "R1";
+                renderTasks();
+            }
+        }
+
+        // Edit task
+        function editTask(column, index) {
+            const task = tasks[column][index];
+
+            // Prompt for new values
+            const newTaskText = prompt("Edit task text:", task.text);
+            const newDeadline = prompt("Edit deadline (YYYY-MM-DD):", task.deadline);
+            const newProjectType = prompt("Edit project type:", task.projectType);
+
+            if (newTaskText !== null && newDeadline !== null && newProjectType !== null) {
+                task.text = newTaskText.trim();
+                task.deadline = newDeadline.trim();
+                task.projectType = newProjectType.trim();
+
+                localStorage.setItem("tasks", JSON.stringify(tasks));
+                renderTasks();
+            }
+        }
+
+
+        // Delete task
+        function deleteTask(column, index) {
+            tasks[column].splice(index, 1);
+            localStorage.setItem("tasks", JSON.stringify(tasks));
+            renderTasks();
+        }
+
+        // Initial render
+        document.addEventListener("DOMContentLoaded", () => {
+            renderProjectTypeOptions(); // Render project type options on load
+            renderTasks();
+        });
+    </script>
+</body>
+</html>
